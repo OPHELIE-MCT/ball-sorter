@@ -12,6 +12,23 @@ constexpr uint8_t kClassifierChannelIndexes[BallClassifier::kFeatureCount] = {0,
 Adafruit_AS7341 as7341;
 unsigned long lastSampleAt = 0;
 
+void printPrediction(const BallClassifier::PredictionResult& prediction) {
+    if (prediction.isUnknown) {
+        Serial.print(prediction.label);
+        Serial.print(" (");
+        Serial.print(prediction.closestKnownColor);
+        Serial.print(", confidence: ");
+        Serial.print(prediction.confidence, 3);
+        Serial.println(')');
+        return;
+    }
+
+    Serial.print(prediction.label);
+    Serial.print(" (confidence: ");
+    Serial.print(prediction.confidence, 3);
+    Serial.println(')');
+}
+
 bool readClassifierFeatures(uint16_t features[BallClassifier::kFeatureCount]) {
     uint16_t rawReadings[kRawChannelCount];
     if (!as7341.readAllChannels(rawReadings)) {
@@ -65,5 +82,7 @@ void loop() {
         return;
     }
 
-    Serial.println(BallClassifier::classifyBallColorOrUnknown(features));
+    const BallClassifier::PredictionResult prediction =
+        BallClassifier::classifyBallColorDetailed(features);
+    printPrediction(prediction);
 }

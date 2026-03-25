@@ -54,6 +54,18 @@ bool normalizeVector(const float input[kFeatureCount], float output[kFeatureCoun
     return true;
 }
 
+float computeConfidence(float distance) {
+    if (distance < 0.0f) {
+        return 0.0f;
+    }
+
+    if (kUnknownThreshold <= 0.0f) {
+        return 0.0f;
+    }
+
+    return 1.0f / (1.0f + (distance / kUnknownThreshold));
+}
+
 int findNearestClassIndex(const float input[kFeatureCount], float* outDistance = nullptr) {
     float normalized[kFeatureCount];
     if (!normalizeVector(input, normalized)) {
@@ -116,6 +128,31 @@ const char* classifyBallColorOrUnknown(const uint16_t input[kFeatureCount]) {
         converted[index] = static_cast<float>(input[index]);
     }
     return classifyBallColorOrUnknown(converted);
+}
+
+PredictionResult classifyBallColorDetailed(const float input[kFeatureCount]) {
+    float distance = 0.0f;
+    const int class_index = findNearestClassIndex(input, &distance);
+    if (class_index < 0) {
+        return {"unknown", "unknown", 0.0f, distance, true};
+    }
+
+    const bool is_unknown = distance > kUnknownThreshold;
+    return {
+        is_unknown ? "unknown" : kClassNames[class_index],
+        kClassNames[class_index],
+        computeConfidence(distance),
+        distance,
+        is_unknown,
+    };
+}
+
+PredictionResult classifyBallColorDetailed(const uint16_t input[kFeatureCount]) {
+    float converted[kFeatureCount];
+    for (size_t index = 0; index < kFeatureCount; ++index) {
+        converted[index] = static_cast<float>(input[index]);
+    }
+    return classifyBallColorDetailed(converted);
 }
 
 }  // namespace BallClassifier

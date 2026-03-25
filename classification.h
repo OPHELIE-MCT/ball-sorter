@@ -23,6 +23,24 @@ constexpr size_t kFeatureCount = 10;
 constexpr size_t kClassCount = 7;
 
 /**
+ * @brief Detailed classification output.
+ * @author David Goletta
+ * @date 2026-03-25
+ *
+ * `label` contains the returned classifier label, which may be `unknown`.
+ * `closestKnownColor` always contains the nearest known class.
+ * `confidence` is a distance-based score in the range `(0, 1]` where higher is
+ * better.
+ */
+struct PredictionResult {
+    const char* label;
+    const char* closestKnownColor;
+    float confidence;
+    float distance;
+    bool isUnknown;
+};
+
+/**
  * @brief Euclidean distance threshold used by the unknown-aware classifier.
  * @author David Goletta
  * @date 2026-03-25
@@ -86,5 +104,29 @@ const char* classifyBallColorOrUnknown(const float input[kFeatureCount]);
  *         or `unknown`.
  */
 const char* classifyBallColorOrUnknown(const uint16_t input[kFeatureCount]);
+
+/**
+ * @brief Return detailed classification information for a floating-point input.
+ * @author David Goletta
+ * @date 2026-03-25
+ *
+ * @param input A 10-dimensional feature vector.
+ * @return Detailed prediction data including the nearest known color,
+ *         distance, confidence score, and whether the sample was rejected as
+ *         `unknown`.
+ */
+PredictionResult classifyBallColorDetailed(const float input[kFeatureCount]);
+
+/**
+ * @brief Return detailed classification information for a 16-bit integer input.
+ * @author David Goletta
+ * @date 2026-03-25
+ *
+ * @param input A 10-dimensional feature vector.
+ * @return Detailed prediction data including the nearest known color,
+ *         distance, confidence score, and whether the sample was rejected as
+ *         `unknown`.
+ */
+PredictionResult classifyBallColorDetailed(const uint16_t input[kFeatureCount]);
 
 }  // namespace BallClassifier
