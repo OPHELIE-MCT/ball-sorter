@@ -8,6 +8,8 @@
 
 namespace {
 
+constexpr uint8_t kDCMotorPin = 3;
+constexpr uint8_t kDCMotorTargetVoltage = 4;  // 4 Volts over the 5 maximum
 constexpr size_t kRawChannelCount = 12;
 constexpr uint8_t kClassifierChannelIndexes[BallClassifier::kFeatureCount] = {0, 1, 2, 3, 6, 7, 8, 9, 10, 11};
 constexpr uint8_t kNeoPixelPin = 1;
@@ -16,7 +18,7 @@ constexpr uint8_t kNeoPixelBrightness = 5;
 constexpr uint8_t kServoPin = 2;
 constexpr uint8_t kServoRestAngle = 0;
 constexpr uint8_t kServoTriggerAngle = 90;
-constexpr uint8_t kToFBallThresholdMm = 25;
+constexpr uint8_t kToFBallThresholdMm = 18;
 constexpr unsigned long kToFDebugIntervalMs = 100;
 
 Adafruit_AS7341 as7341;
@@ -26,6 +28,7 @@ Servo sorterServo;
 
 bool wasToFBallPresent = false;
 bool servoShouldTriggerOnNextBall = false;
+uint8_t currentServoAngle = 255;
 
 bool labelsEqual(const char* left, const char* right) {
     return left != nullptr && right != nullptr && strcmp(left, right) == 0;
@@ -83,7 +86,13 @@ bool tofSeesBall(uint8_t* measuredDistance = nullptr) {
 }
 
 void setSorterServo(bool engaged) {
-    sorterServo.write(engaged ? kServoTriggerAngle : kServoRestAngle);
+    const uint8_t targetAngle = engaged ? kServoTriggerAngle : kServoRestAngle;
+    if (targetAngle == currentServoAngle) {
+        return;
+    }
+
+    currentServoAngle = targetAngle;
+    sorterServo.write(targetAngle);
 }
 
 void printPrediction(const BallClassifier::PredictionResult& prediction) {
@@ -120,7 +129,6 @@ bool readClassifierFeatures(uint16_t features[BallClassifier::kFeatureCount]) {
 
 void setup() {
     Serial.begin(115200);
-
     while (!Serial) {
         delay(1);
     }
@@ -133,6 +141,7 @@ void setup() {
     strip.show();
 
     sorterServo.attach(kServoPin);
+    currentServoAngle = 0;
     setSorterServo(false);
 
     while (!(tofSensor.begin())) {
@@ -142,7 +151,7 @@ void setup() {
 
     while (!as7341.begin(57, &Wire1)) {
         Serial.println("Could not find AS7341");
-        delay(3000);
+        delay(1000);
     }
 
     as7341.setATIME(100);
@@ -151,10 +160,15 @@ void setup() {
     as7341.setLEDCurrent(5);
     as7341.enableLED(true);
 
+    Wire.setWireTimeout(2500, true);
+
     Serial.println("AS7341 classifier ready");
+
+    analogWriteResolution(8);
 }
 
 void loop() {
+    analogWrite(kDCMotorPin, (kDCMotorTargetVoltage * 255) / 5);
     uint16_t features[BallClassifier::kFeatureCount];
     unsigned long startReadingTime = millis();
     if (!readClassifierFeatures(features)) {
@@ -167,16 +181,18 @@ void loop() {
     unsigned long startClassificationTime = micros();
     const BallClassifier::PredictionResult prediction = BallClassifier::classifyBallColorDetailed(features);
     unsigned long endClassificationTime = micros();
-    Serial.println("Classification took " + String(endClassificationTime - startClassificationTime) + "us (reading took " + String(endReadingTime - startReadingTime) + "ms)");
     printPrediction(prediction);
 
-    showDetectedColor(prediction.isUnknown ? nullptr : prediction.label);
+    static const char* lastLabel = nullptr;
+    // const char* currentLabel = prediction.label;
+    const char* currentLabel = prediction.closestKnownColor;
+    if (currentLabel != lastLabel) {
+        showDetectedColor(currentLabel);
+        lastLabel = currentLabel;
+    }
 
-    servoShouldTriggerOnNextBall = !prediction.isUnknown && labelsEqual(prediction.label, "red");
-    Serial.println(
-        String("Next ToF edge will set servo ") +
-        (servoShouldTriggerOnNextBall ? "ON for red ball" : "OFF for non-red ball"));
-
+    // servoShouldTriggerOnNextBall = !prediction.isUnknown && labelsEqual(prediction.closestKnownColor, "red");
+    servoShouldTriggerOnNextBall = labelsEqual(prediction.closestKnownColor, "red");
     uint8_t tofDistance = 0;
     const bool tofBallPresent = tofSeesBall(&tofDistance);
     if (tofBallPresent && !wasToFBallPresent) {

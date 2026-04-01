@@ -49,6 +49,7 @@ struct PredictionResult {
  * centroid are rejected as `unknown`.
  */
 constexpr float kUnknownThreshold = 0.06472885f;
+// constexpr float kUnknownThreshold = 0.0f;
 
 /**
  * @brief Predict the closest known ball color from a floating-point feature vector.
