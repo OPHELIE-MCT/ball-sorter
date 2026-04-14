@@ -20,6 +20,9 @@ constexpr uint8_t kServoRestAngle = 0;
 constexpr uint8_t kServoTriggerAngle = 90;
 constexpr uint8_t kToFBallThresholdMm = 18;
 constexpr unsigned long kToFDebugIntervalMs = 100;
+constexpr unsigned long kErrorAnimationStepMs = 50;
+
+bool sensorErrorState = false;
 
 Adafruit_AS7341 as7341;
 Adafruit_NeoPixel strip(kNeoPixelCount, kNeoPixelPin, NEO_GRB + NEO_KHZ800);
@@ -64,12 +67,26 @@ uint32_t colorForLabel(const char* label) {
     return strip.Color(0, 0, 0);
 }
 
-void showDetectedColor(const char* label) {
+void showDetectedColor(const BallClassifier::PredictionResult& prediction) {
+    static const char* lastLabel = nullptr;
+    static uint16_t lastLitPixelCount = UINT16_MAX;
+
+    const char* label = prediction.closestKnownColor;
+    const long confidencePercent = constrain(static_cast<long>(prediction.confidence * 100.0f), 0L, 100L);
+    const uint16_t litPixelCount = static_cast<uint16_t>(map(confidencePercent, 0, 100, 0, strip.numPixels()));
+
+    if (labelsEqual(label, lastLabel) && litPixelCount == lastLitPixelCount) {
+        return;
+    }
+
     const uint32_t color = colorForLabel(label);
     for (uint16_t pixel = 0; pixel < strip.numPixels(); ++pixel) {
-        strip.setPixelColor(pixel, color);
+        strip.setPixelColor(pixel, pixel < litPixelCount ? color : 0);
     }
     strip.show();
+
+    lastLabel = label;
+    lastLitPixelCount = litPixelCount;
 }
 
 bool tofSeesBall(uint8_t* measuredDistance = nullptr) {
@@ -146,12 +163,12 @@ void setup() {
 
     while (!(tofSensor.begin())) {
         Serial.println("Could not find VL6180X");
-        delay(1000);
+        pixelErrorAnimation();
     }
 
     while (!as7341.begin(57, &Wire1)) {
         Serial.println("Could not find AS7341");
-        delay(1000);
+        pixelErrorAnimation();
     }
 
     as7341.setATIME(100);
@@ -167,13 +184,30 @@ void setup() {
     analogWriteResolution(8);
 }
 
+void pixelErrorAnimation() {
+    static uint16_t currentPixel = 0;
+    static unsigned long lastUpdateTime = 0;
+
+    const unsigned long now = millis();
+    if (now - lastUpdateTime < kErrorAnimationStepMs) {
+        return;
+    }
+
+    lastUpdateTime = now;
+    const uint16_t previousPixel = currentPixel == 0 ? strip.numPixels() - 1 : currentPixel - 1;
+
+    strip.setPixelColor(previousPixel, 0);
+    strip.setPixelColor(currentPixel, strip.Color(255, 0, 0));
+    strip.show();
+    currentPixel = (currentPixel + 1) % strip.numPixels();
+}
+
 void loop() {
     analogWrite(kDCMotorPin, (kDCMotorTargetVoltage * 255) / 5);
     uint16_t features[BallClassifier::kFeatureCount];
     unsigned long startReadingTime = millis();
     if (!readClassifierFeatures(features)) {
-        Serial.println("Error reading AS7341 channels");
-        delay(50);
+        Serial.println("Error reading AS7341 channels (" + String(millis() - startReadingTime) + " ms)");
         return;
     }
     unsigned long endReadingTime = millis();
@@ -181,15 +215,9 @@ void loop() {
     unsigned long startClassificationTime = micros();
     const BallClassifier::PredictionResult prediction = BallClassifier::classifyBallColorDetailed(features);
     unsigned long endClassificationTime = micros();
-    printPrediction(prediction);
+    // printPrediction(prediction);
 
-    static const char* lastLabel = nullptr;
-    // const char* currentLabel = prediction.label;
-    const char* currentLabel = prediction.closestKnownColor;
-    if (currentLabel != lastLabel) {
-        showDetectedColor(currentLabel);
-        lastLabel = currentLabel;
-    }
+    showDetectedColor(prediction);
 
     // servoShouldTriggerOnNextBall = !prediction.isUnknown && labelsEqual(prediction.closestKnownColor, "red");
     servoShouldTriggerOnNextBall = labelsEqual(prediction.closestKnownColor, "red");
