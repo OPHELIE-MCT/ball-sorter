@@ -30,7 +30,8 @@ DFRobot_VL6180X tofSensor;
 Servo sorterServo;
 
 bool wasToFBallPresent = false;
-bool servoShouldTriggerOnNextBall = false;
+bool colorSensorSlotHasRedBall = false;
+bool tofSensorSlotHasRedBall = false;
 uint8_t currentServoAngle = 255;
 
 bool labelsEqual(const char* left, const char* right) {
@@ -219,17 +220,19 @@ void loop() {
 
     showDetectedColor(prediction);
 
-    // servoShouldTriggerOnNextBall = !prediction.isUnknown && labelsEqual(prediction.closestKnownColor, "red");
-    servoShouldTriggerOnNextBall = labelsEqual(prediction.closestKnownColor, "red");
+    const bool colorSensorSeesRedBall = labelsEqual(prediction.closestKnownColor, "red");
     uint8_t tofDistance = 0;
     const bool tofBallPresent = tofSeesBall(&tofDistance);
     if (tofBallPresent && !wasToFBallPresent) {
+        tofSensorSlotHasRedBall = colorSensorSlotHasRedBall;
+        colorSensorSlotHasRedBall = colorSensorSeesRedBall;
+
         Serial.println(
             String("ToF rising edge at ") + String(tofDistance) +
             "mm, setting servo " +
-            (servoShouldTriggerOnNextBall ? String("to 90") : String("to 0")) +
+            (tofSensorSlotHasRedBall ? String("to 90") : String("to 0")) +
             " degrees");
-        setSorterServo(servoShouldTriggerOnNextBall);
+        setSorterServo(tofSensorSlotHasRedBall);
     }
     wasToFBallPresent = tofBallPresent;
 }
