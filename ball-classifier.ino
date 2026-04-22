@@ -1,21 +1,26 @@
 
 #include <Adafruit_AS7341.h>
 #include <Adafruit_NeoPixel.h>
+#include <Adafruit_TiCoServo.h>
 #include <DFRobot_VL6180X.h>
-#include <Servo.h>
 
 #include "classification.h"
 
 namespace {
 
+// Pins
 constexpr uint8_t kDCMotorPin = 3;
+constexpr uint8_t kNeoPixelPin = 6;
+constexpr uint8_t kServoPin = 9;
+constexpr uint8_t kBottomToFSensorCEPin = 7;
+constexpr uint8_t kTopToFSensorCEPin = 8;
+
+// Constants
 constexpr uint8_t kDCMotorTargetVoltage = 4;  // 4 Volts over the 5 maximum
 constexpr size_t kRawChannelCount = 12;
 constexpr uint8_t kClassifierChannelIndexes[BallClassifier::kFeatureCount] = {0, 1, 2, 3, 6, 7, 8, 9, 10, 11};
-constexpr uint8_t kNeoPixelPin = 1;
 constexpr uint8_t kNeoPixelCount = 24;
 constexpr uint8_t kNeoPixelBrightness = 5;
-constexpr uint8_t kServoPin = 2;
 constexpr uint8_t kServoRestAngle = 0;
 constexpr uint8_t kServoTriggerAngle = 90;
 constexpr uint8_t kToFBallThresholdMm = 18;
@@ -26,8 +31,9 @@ bool sensorErrorState = false;
 
 Adafruit_AS7341 as7341;
 Adafruit_NeoPixel strip(kNeoPixelCount, kNeoPixelPin, NEO_GRB + NEO_KHZ800);
-DFRobot_VL6180X tofSensor;
-Servo sorterServo;
+DFRobot_VL6180X bottomTofSensor;
+DFRobot_VL6180X topTofSensor;
+Adafruit_TiCoServo sorterServo;
 
 bool wasToFBallPresent = false;
 bool colorSensorSlotHasRedBall = false;
@@ -90,9 +96,12 @@ void showDetectedColor(const BallClassifier::PredictionResult& prediction) {
     lastLitPixelCount = litPixelCount;
 }
 
-bool tofSeesBall(uint8_t* measuredDistance = nullptr) {
-    const uint8_t range = tofSensor.rangePollMeasurement();
-    const uint8_t status = tofSensor.getRangeResult();
+bool tofSeesBall(DFRobot_VL6180X* sensor = nullptr, uint8_t* measuredDistance = nullptr) {
+    if (sensor == nullptr) {
+        sensor = &bottomTofSensor;
+    }
+    const uint8_t range = sensor->rangePollMeasurement();
+    const uint8_t status = sensor->getRangeResult();
     if (status != VL6180X_NO_ERR) {
         return false;
     }
@@ -162,12 +171,12 @@ void setup() {
     currentServoAngle = 0;
     setSorterServo(false);
 
-    while (!(tofSensor.begin())) {
-        Serial.println("Could not find VL6180X");
+    while (!(bottomTofSensor.begin())) {
+        Serial.println("Could not find bottom VL6180X");
         pixelErrorAnimation();
     }
 
-    while (!as7341.begin(57, &Wire1)) {
+    while (!as7341.begin(57, &Wire)) {
         Serial.println("Could not find AS7341");
         pixelErrorAnimation();
     }
@@ -178,11 +187,7 @@ void setup() {
     as7341.setLEDCurrent(5);
     as7341.enableLED(true);
 
-    Wire.setWireTimeout(2500, true);
-
     Serial.println("AS7341 classifier ready");
-
-    analogWriteResolution(8);
 }
 
 void pixelErrorAnimation() {
@@ -222,7 +227,7 @@ void loop() {
 
     const bool colorSensorSeesRedBall = labelsEqual(prediction.closestKnownColor, "red");
     uint8_t tofDistance = 0;
-    const bool tofBallPresent = tofSeesBall(&tofDistance);
+    const bool tofBallPresent = tofSeesBall(&bottomTofSensor, &tofDistance);
     if (tofBallPresent && !wasToFBallPresent) {
         tofSensorSlotHasRedBall = colorSensorSlotHasRedBall;
         colorSensorSlotHasRedBall = colorSensorSeesRedBall;
