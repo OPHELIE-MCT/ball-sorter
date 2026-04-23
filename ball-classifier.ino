@@ -10,6 +10,7 @@ namespace {
 
 // Pins
 constexpr uint8_t kDCMotorPin = 3;
+constexpr uint8_t kForceRotationPin = 4;
 constexpr uint8_t kNeoPixelPin = 6;
 constexpr uint8_t kServoPin = 9;
 constexpr uint8_t kBottomToFSensorCEPin = 7;
@@ -96,7 +97,7 @@ void showDetectedColor(const BallClassifier::PredictionResult& prediction) {
     lastLitPixelCount = litPixelCount;
 }
 
-bool tofSeesBall(DFRobot_VL6180X* sensor = nullptr, uint8_t* measuredDistance = nullptr) {
+bool tofSeesBall(DFRobot_VL6180X* sensor = nullptr, uint8_t threshold = kToFBallThresholdMm, uint8_t* measuredDistance = nullptr) {
     if (sensor == nullptr) {
         sensor = &bottomTofSensor;
     }
@@ -109,7 +110,7 @@ bool tofSeesBall(DFRobot_VL6180X* sensor = nullptr, uint8_t* measuredDistance = 
     if (measuredDistance != nullptr) {
         *measuredDistance = range;
     }
-    return range < kToFBallThresholdMm;
+    return range < threshold;
 }
 
 void setSorterServo(bool engaged) {
@@ -171,8 +172,22 @@ void setup() {
     currentServoAngle = 0;
     setSorterServo(false);
 
+    // Turn off the top sensor to change address of the bottom sensor without conflicts, then turn it back on at the end of setup
+    pinMode(kTopToFSensorCEPin, OUTPUT);
+    pinMode(kBottomToFSensorCEPin, OUTPUT);
+    digitalWrite(kTopToFSensorCEPin, LOW);
+    digitalWrite(kBottomToFSensorCEPin, HIGH);
+
     while (!(bottomTofSensor.begin())) {
         Serial.println("Could not find bottom VL6180X");
+        pixelErrorAnimation();
+    }
+    bottomTofSensor.setIICAddr(0x30);
+
+    // Turn back on the top sensor and initialize it, now that the bottom sensor has a different address
+    digitalWrite(kTopToFSensorCEPin, HIGH);
+    while (!(topTofSensor.begin())) {
+        Serial.println("Could not find top VL6180X");
         pixelErrorAnimation();
     }
 
@@ -209,7 +224,11 @@ void pixelErrorAnimation() {
 }
 
 void loop() {
-    analogWrite(kDCMotorPin, (kDCMotorTargetVoltage * 255) / 5);
+    if (tofSeesBall(&topTofSensor, kToFBallThresholdMm * 2) || digitalRead(kForceRotationPin) == HIGH) {
+        analogWrite(kDCMotorPin, (kDCMotorTargetVoltage * 255) / 5);
+    } else {
+        analogWrite(kDCMotorPin, 0);
+    }
     uint16_t features[BallClassifier::kFeatureCount];
     unsigned long startReadingTime = millis();
     if (!readClassifierFeatures(features)) {
@@ -227,16 +246,12 @@ void loop() {
 
     const bool colorSensorSeesRedBall = labelsEqual(prediction.closestKnownColor, "red");
     uint8_t tofDistance = 0;
-    const bool tofBallPresent = tofSeesBall(&bottomTofSensor, &tofDistance);
-    if (tofBallPresent && !wasToFBallPresent) {
+    const bool tofBallPresent = tofSeesBall(&bottomTofSensor, kToFBallThresholdMm, &tofDistance);
+    if (!tofBallPresent && wasToFBallPresent) {
         tofSensorSlotHasRedBall = colorSensorSlotHasRedBall;
         colorSensorSlotHasRedBall = colorSensorSeesRedBall;
 
-        Serial.println(
-            String("ToF rising edge at ") + String(tofDistance) +
-            "mm, setting servo " +
-            (tofSensorSlotHasRedBall ? String("to 90") : String("to 0")) +
-            " degrees");
+        Serial.println("ToF rising edge at " + String(tofDistance) + "mm, setting servo " + (tofSensorSlotHasRedBall ? "to 90" : "to 0") + " degrees");
         setSorterServo(tofSensorSlotHasRedBall);
     }
     wasToFBallPresent = tofBallPresent;
