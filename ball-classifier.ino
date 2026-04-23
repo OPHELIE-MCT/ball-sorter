@@ -6,15 +6,13 @@
 
 #include "classification.h"
 
-namespace {
-
 // Pins
 constexpr uint8_t kDCMotorPin = 3;
 constexpr uint8_t kForceRotationPin = 4;
 constexpr uint8_t kNeoPixelPin = 6;
-constexpr uint8_t kServoPin = 9;
 constexpr uint8_t kBottomToFSensorCEPin = 7;
 constexpr uint8_t kTopToFSensorCEPin = 8;
+constexpr uint8_t kServoPin = 9;
 
 // Constants
 constexpr uint8_t kDCMotorTargetVoltage = 4;  // 4 Volts over the 5 maximum
@@ -152,8 +150,6 @@ bool readClassifierFeatures(uint16_t features[BallClassifier::kFeatureCount]) {
 
     return true;
 }
-
-}  // namespace
 
 void setup() {
     Serial.begin(115200);
