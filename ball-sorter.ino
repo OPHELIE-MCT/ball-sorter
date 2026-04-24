@@ -26,6 +26,7 @@ constexpr uint8_t kToFBallThresholdMm = 40;
 constexpr unsigned long kToFDebugIntervalMs = 100;
 constexpr unsigned long kErrorAnimationStepMs = 50;
 constexpr uint8_t kMaxBallCount = 18;
+constexpr unsigned long kMotorKickMs = 10;  // milliseconds to run full speed on start
 
 bool sensorErrorState = false;
 
@@ -180,6 +181,45 @@ void printDistances(uint8_t topDistance, int8_t bottomDistance) {
     Serial.println("Top ToF distance: " + String(topDistance) + "/" + String(kToFBallThresholdMm) + "mm, Bottom ToF distance: " + String(bottomDistance) + "/" + String(kToFBallThresholdMm) + "mm");
 }
 
+// Drive the DC motor. When `enable` transitions false->true, perform a short full-speed
+// kick to help the motor start, then fall back to target PWM.
+void driveMotor(bool enable) {
+    static bool motorWasRunning = false;
+    static bool motorStarting = false;
+    static unsigned long motorStartTime = 0;
+
+    if (enable) {
+        if (!motorWasRunning && !motorStarting) {
+            // beginning of start: kick motor at full speed
+            motorStarting = true;
+            motorStartTime = millis();
+            analogWrite(kDCMotorPin, 255);
+            return;
+        }
+
+        if (motorStarting) {
+            if (millis() - motorStartTime >= kMotorKickMs) {
+                motorStarting = false;
+                motorWasRunning = true;
+                analogWrite(kDCMotorPin, (kDCMotorTargetVoltage * 255) / 5);
+            } else {
+                // still in kick period; keep full PWM
+                analogWrite(kDCMotorPin, 255);
+            }
+            return;
+        }
+
+        // already running normally
+        motorWasRunning = true;
+        analogWrite(kDCMotorPin, (kDCMotorTargetVoltage * 255) / 5);
+    } else {
+        // stop motor immediately and reset states
+        analogWrite(kDCMotorPin, 0);
+        motorWasRunning = false;
+        motorStarting = false;
+    }
+}
+
 void setup() {
     Serial.begin(115200);
     while (!Serial) {
@@ -236,13 +276,14 @@ void loop() {
     static uint8_t ballCount = 0;
     static bool topLastBallPresent = false;
     static bool bottomLastBallPresent = false;
+    static bool motorWasRunning = false;
+    static bool motorStarting = false;
+    static unsigned long motorStartTime = 0;
     uint8_t topTofDistance = 0;
     const bool topBallPresent = tofSeesBall(&topTofSensor, kToFBallThresholdMm, &topTofDistance);
-    if ((topBallPresent && ballCount < kMaxBallCount) || digitalRead(kForceRotationPin) == HIGH) {
-        analogWrite(kDCMotorPin, (kDCMotorTargetVoltage * 255) / 5);
-    } else {
-        analogWrite(kDCMotorPin, 0);
-    }
+    const bool shouldMotorRun = (topBallPresent && ballCount < kMaxBallCount) || digitalRead(kForceRotationPin) == HIGH;
+
+    driveMotor(shouldMotorRun);
     uint16_t features[BallClassifier::kFeatureCount];
     unsigned long startReadingTime = millis();
     if (!readClassifierFeatures(features)) {
