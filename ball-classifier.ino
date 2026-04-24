@@ -10,8 +10,8 @@
 constexpr uint8_t kDCMotorPin = 3;
 constexpr uint8_t kForceRotationPin = 4;
 constexpr uint8_t kNeoPixelPin = 6;
-constexpr uint8_t kBottomToFSensorCEPin = 7;
-constexpr uint8_t kTopToFSensorCEPin = 8;
+constexpr uint8_t kTopToFSensorCEPin = 7;
+constexpr uint8_t kBottomToFSensorCEPin = 8;
 constexpr uint8_t kServoPin = 9;
 
 // Constants
@@ -22,7 +22,7 @@ constexpr uint8_t kNeoPixelCount = 24;
 constexpr uint8_t kNeoPixelBrightness = 5;
 constexpr uint8_t kServoRestAngle = 0;
 constexpr uint8_t kServoTriggerAngle = 90;
-constexpr uint8_t kToFBallThresholdMm = 18;
+constexpr uint8_t kToFBallThresholdMm = 40;
 constexpr unsigned long kToFDebugIntervalMs = 100;
 constexpr unsigned long kErrorAnimationStepMs = 50;
 
@@ -151,6 +151,34 @@ bool readClassifierFeatures(uint16_t features[BallClassifier::kFeatureCount]) {
     return true;
 }
 
+void pixelErrorAnimation() {
+    static uint16_t currentPixel = 0;
+    static unsigned long lastUpdateTime = 0;
+
+    const unsigned long now = millis();
+    if (now - lastUpdateTime < kErrorAnimationStepMs) {
+        return;
+    }
+
+    lastUpdateTime = now;
+    const uint16_t previousPixel = currentPixel == 0 ? strip.numPixels() - 1 : currentPixel - 1;
+
+    strip.setPixelColor(previousPixel, 0);
+    strip.setPixelColor(currentPixel, strip.Color(255, 0, 0));
+    strip.show();
+    currentPixel = (currentPixel + 1) % strip.numPixels();
+}
+
+void printDistances(uint8_t topDistance, int8_t bottomDistance) {
+    static unsigned long lastPrintTime = 0;
+    const unsigned long now = millis();
+    if (now - lastPrintTime < kToFDebugIntervalMs) {
+        return;
+    }
+    lastPrintTime = now;
+    Serial.println("Top ToF distance: " + String(topDistance) + "/" + String(kToFBallThresholdMm) + "mm, Bottom ToF distance: " + String(bottomDistance) + "/" + String(kToFBallThresholdMm) + "mm");
+}
+
 void setup() {
     Serial.begin(115200);
     while (!Serial) {
@@ -173,6 +201,7 @@ void setup() {
     pinMode(kBottomToFSensorCEPin, OUTPUT);
     digitalWrite(kTopToFSensorCEPin, LOW);
     digitalWrite(kBottomToFSensorCEPin, HIGH);
+    delay(100);
 
     while (!(bottomTofSensor.begin())) {
         Serial.println("Could not find bottom VL6180X");
@@ -182,6 +211,7 @@ void setup() {
 
     // Turn back on the top sensor and initialize it, now that the bottom sensor has a different address
     digitalWrite(kTopToFSensorCEPin, HIGH);
+    delay(100);
     while (!(topTofSensor.begin())) {
         Serial.println("Could not find top VL6180X");
         pixelErrorAnimation();
@@ -201,26 +231,9 @@ void setup() {
     Serial.println("AS7341 classifier ready");
 }
 
-void pixelErrorAnimation() {
-    static uint16_t currentPixel = 0;
-    static unsigned long lastUpdateTime = 0;
-
-    const unsigned long now = millis();
-    if (now - lastUpdateTime < kErrorAnimationStepMs) {
-        return;
-    }
-
-    lastUpdateTime = now;
-    const uint16_t previousPixel = currentPixel == 0 ? strip.numPixels() - 1 : currentPixel - 1;
-
-    strip.setPixelColor(previousPixel, 0);
-    strip.setPixelColor(currentPixel, strip.Color(255, 0, 0));
-    strip.show();
-    currentPixel = (currentPixel + 1) % strip.numPixels();
-}
-
 void loop() {
-    if (tofSeesBall(&topTofSensor, kToFBallThresholdMm * 2) || digitalRead(kForceRotationPin) == HIGH) {
+    uint8_t topTofDistance = 0;
+    if (tofSeesBall(&topTofSensor, kToFBallThresholdMm, &topTofDistance) || digitalRead(kForceRotationPin) == HIGH) {
         analogWrite(kDCMotorPin, (kDCMotorTargetVoltage * 255) / 5);
     } else {
         analogWrite(kDCMotorPin, 0);
@@ -241,14 +254,15 @@ void loop() {
     showDetectedColor(prediction);
 
     const bool colorSensorSeesRedBall = labelsEqual(prediction.closestKnownColor, "red");
-    uint8_t tofDistance = 0;
-    const bool tofBallPresent = tofSeesBall(&bottomTofSensor, kToFBallThresholdMm, &tofDistance);
+    uint8_t bottomTofDistance = 0;
+    const bool tofBallPresent = tofSeesBall(&bottomTofSensor, kToFBallThresholdMm, &bottomTofDistance);
     if (!tofBallPresent && wasToFBallPresent) {
         tofSensorSlotHasRedBall = colorSensorSlotHasRedBall;
         colorSensorSlotHasRedBall = colorSensorSeesRedBall;
 
-        Serial.println("ToF rising edge at " + String(tofDistance) + "mm, setting servo " + (tofSensorSlotHasRedBall ? "to 90" : "to 0") + " degrees");
+        Serial.println("Bottom ToF rising edge at " + String(bottomTofDistance) + "mm, setting servo " + (tofSensorSlotHasRedBall ? "to 90" : "to 0") + " degrees");
         setSorterServo(tofSensorSlotHasRedBall);
     }
     wasToFBallPresent = tofBallPresent;
+    // printDistances(topTofDistance, bottomTofDistance);
 }
