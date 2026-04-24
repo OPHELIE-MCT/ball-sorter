@@ -25,6 +25,7 @@ constexpr uint8_t kServoTriggerAngle = 90;
 constexpr uint8_t kToFBallThresholdMm = 40;
 constexpr unsigned long kToFDebugIntervalMs = 100;
 constexpr unsigned long kErrorAnimationStepMs = 50;
+constexpr uint8_t kMaxBallCount = 18;
 
 bool sensorErrorState = false;
 
@@ -34,7 +35,7 @@ DFRobot_VL6180X bottomTofSensor;
 DFRobot_VL6180X topTofSensor;
 Adafruit_TiCoServo sorterServo;
 
-bool wasToFBallPresent = false;
+bool bottomLastBallPresent = false;
 bool colorSensorSlotHasRedBall = false;
 bool tofSensorSlotHasRedBall = false;
 uint8_t currentServoAngle = 255;
@@ -232,8 +233,12 @@ void setup() {
 }
 
 void loop() {
+    static uint8_t ballCount = 0;
+    static bool topLastBallPresent = false;
+    static bool bottomLastBallPresent = false;
     uint8_t topTofDistance = 0;
-    if (tofSeesBall(&topTofSensor, kToFBallThresholdMm, &topTofDistance) || digitalRead(kForceRotationPin) == HIGH) {
+    const bool topBallPresent = tofSeesBall(&topTofSensor, kToFBallThresholdMm, &topTofDistance);
+    if ((topBallPresent && ballCount < kMaxBallCount) || digitalRead(kForceRotationPin) == HIGH) {
         analogWrite(kDCMotorPin, (kDCMotorTargetVoltage * 255) / 5);
     } else {
         analogWrite(kDCMotorPin, 0);
@@ -255,14 +260,28 @@ void loop() {
 
     const bool colorSensorSeesRedBall = labelsEqual(prediction.closestKnownColor, "red");
     uint8_t bottomTofDistance = 0;
-    const bool tofBallPresent = tofSeesBall(&bottomTofSensor, kToFBallThresholdMm, &bottomTofDistance);
-    if (!tofBallPresent && wasToFBallPresent) {
+    const bool bottomBallPresent = tofSeesBall(&bottomTofSensor, kToFBallThresholdMm, &bottomTofDistance);
+
+    // Top rising edge
+    if (topBallPresent && !topLastBallPresent) {
+        ballCount = min(ballCount + 1, kMaxBallCount);
+        Serial.println("Ball count: " + String(ballCount));
+    }
+
+    // Bottom rising edge
+    if (bottomBallPresent && !bottomLastBallPresent) {
         tofSensorSlotHasRedBall = colorSensorSlotHasRedBall;
         colorSensorSlotHasRedBall = colorSensorSeesRedBall;
-
-        Serial.println("Bottom ToF rising edge at " + String(bottomTofDistance) + "mm, setting servo " + (tofSensorSlotHasRedBall ? "to 90" : "to 0") + " degrees");
         setSorterServo(tofSensorSlotHasRedBall);
     }
-    wasToFBallPresent = tofBallPresent;
+
+    // Bottom falling edge
+    if (!bottomBallPresent && bottomLastBallPresent) {
+        ballCount = max(0, ballCount - 1);
+        Serial.println("Ball count: " + String(ballCount));
+    }
+
+    topLastBallPresent = topBallPresent;
+    bottomLastBallPresent = bottomBallPresent;
     // printDistances(topTofDistance, bottomTofDistance);
 }
