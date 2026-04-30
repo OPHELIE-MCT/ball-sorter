@@ -276,6 +276,7 @@ void loop() {
     static uint8_t ballCount = 0;
     static bool topLastBallPresent = false;
     static bool bottomLastBallPresent = false;
+    static bool ballCountWasAtMax = false;
     static bool motorWasRunning = false;
     static bool motorStarting = false;
     static unsigned long motorStartTime = 0;
@@ -309,8 +310,10 @@ void loop() {
         Serial.println("Ball count: " + String(ballCount));
     }
 
+    const bool ballCountJustReachedMax = ballCount == kMaxBallCount && !ballCountWasAtMax;
+
     // Bottom rising edge
-    if (bottomBallPresent && !bottomLastBallPresent) {
+    if ((bottomBallPresent && !bottomLastBallPresent) || ballCountJustReachedMax) {
         tofSensorSlotHasRedBall = colorSensorSlotHasRedBall;
         colorSensorSlotHasRedBall = colorSensorSeesRedBall;
         setSorterServo(tofSensorSlotHasRedBall);
@@ -324,5 +327,6 @@ void loop() {
 
     topLastBallPresent = topBallPresent;
     bottomLastBallPresent = bottomBallPresent;
+    ballCountWasAtMax = ballCount == kMaxBallCount;
     // printDistances(topTofDistance, bottomTofDistance);
 }
