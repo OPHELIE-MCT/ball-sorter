@@ -8,14 +8,17 @@
 
 // Pins
 constexpr uint8_t kDCMotorPin = 3;
-constexpr uint8_t kForceRotationPin = 4;
-constexpr uint8_t kNeoPixelPin = 6;
-constexpr uint8_t kTopToFSensorCEPin = 7;
-constexpr uint8_t kBottomToFSensorCEPin = 8;
+constexpr uint8_t kRotateBarrel = 2;
+constexpr uint8_t kNeoPixelPin = 7;
+constexpr uint8_t kTopToFSensorCEPin = 6;
+constexpr uint8_t kBottomToFSensorCEPin = 5;
 constexpr uint8_t kServoPin = 9;
+constexpr uint8_t kSpiChipSelectPin = 8;
+constexpr uint8_t kEmergencyStopPin = 4;
+constexpr uint8_t kAlignBarrel = 10;
 
 // Constants
-constexpr uint8_t kDCMotorTargetVoltage = 4;  // 4 Volts over the 5 maximum
+constexpr uint8_t kDCMotorTargetVoltage = 3;  // 4 Volts over the 5 maximum
 constexpr size_t kRawChannelCount = 12;
 constexpr uint8_t kClassifierChannelIndexes[BallClassifier::kFeatureCount] = {0, 1, 2, 3, 6, 7, 8, 9, 10, 11};
 constexpr uint8_t kNeoPixelCount = 24;
@@ -232,10 +235,17 @@ void setup() {
     strip.setBrightness(kNeoPixelBrightness);
     strip.clear();
     strip.show();
-
+    pinMode(kServoPin, OUTPUT);
     sorterServo.attach(kServoPin);
     currentServoAngle = 0;
     setSorterServo(false);
+
+    pinMode(kDCMotorPin, OUTPUT);
+    pinMode(kRotateBarrel, INPUT);
+    pinMode(kNeoPixelPin, OUTPUT);
+    pinMode(kSpiChipSelectPin, OUTPUT);
+    pinMode(kEmergencyStopPin, INPUT);
+    pinMode(kAlignBarrel, INPUT);
 
     // Turn off the top sensor to change address of the bottom sensor without conflicts, then turn it back on at the end of setup
     pinMode(kTopToFSensorCEPin, OUTPUT);
@@ -282,7 +292,7 @@ void loop() {
     static unsigned long motorStartTime = 0;
     uint8_t topTofDistance = 0;
     const bool topBallPresent = tofSeesBall(&topTofSensor, kToFBallThresholdMm, &topTofDistance);
-    const bool shouldMotorRun = (topBallPresent && ballCount < kMaxBallCount) || digitalRead(kForceRotationPin) == HIGH;
+    const bool shouldMotorRun = (topBallPresent && ballCount < kMaxBallCount) || digitalRead(kRotateBarrel) == HIGH;
 
     driveMotor(shouldMotorRun);
     uint16_t features[BallClassifier::kFeatureCount];
