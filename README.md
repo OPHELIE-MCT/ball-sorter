@@ -1,23 +1,21 @@
 # Ball Sorter
 
-Arduino-based ball sorting project using color classification and distance sensors.
+Firmware repository for the Seeeduino Nano ball-sorting subsystem.
 
-## Overview
+## What lives here
 
-This repository contains the firmware for a ball sorter that:
+- the sorter sketch that drives the motor, servo, NeoPixels, and local ToF sensors
+- the embedded AS7341 color classifier used during sorting
+- the reference feature order and class list used by the calibration workflow
 
-- detects ball presence with VL6180X time-of-flight sensors,
-- reads color data from an AS7341 sensor,
-- classifies the ball color with the embedded classifier,
-- drives a servo to route the ball,
-- runs a DC motor and shows status on a NeoPixel ring.
+## Calibration link
 
-## Files
+The embedded centroids in `classification.cpp` are regenerated outside this repo:
 
-- `ball-sorter.ino`: main Arduino sketch.
-- `classification.h`: classifier interface and prediction types.
-- `classification.cpp`: embedded color classification implementation.
+- samples are captured with the Uno Q sketch in `M2614_LaFaceCacheeDeLaLune`
+- labeled rows are written by `M2614_LaFaceCacheeDeLaLune-Python`
+- `ball-analyzer/analysis.ipynb` prints the final C array to paste back into this repo
 
-## Microcontroller
+## Target hardware
 
-The firmware is designed for an Arduino Nano based board (currently using a Seeeduino Nano), but it should work on any AVR board supported by the Adafruit TiCoServo library.
+The firmware is currently aimed at a Seeeduino Nano class board and the sorter hardware used in the M2614 project.
