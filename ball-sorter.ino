@@ -23,8 +23,8 @@ constexpr size_t kRawChannelCount = 12;
 constexpr uint8_t kClassifierChannelIndexes[BallClassifier::kFeatureCount] = {0, 1, 2, 3, 6, 7, 8, 9, 10, 11};
 constexpr uint8_t kNeoPixelCount = 24;
 constexpr uint8_t kNeoPixelBrightness = 5;
-constexpr uint8_t kServoRestAngle = 0;
-constexpr uint8_t kServoTriggerAngle = 90;
+constexpr uint8_t kGoodBallServoAngle = 55;
+constexpr uint8_t kRedBallServoAngle = 102;
 constexpr uint8_t kToFBallThresholdMm = 40;
 constexpr unsigned long kToFDebugIntervalMs = 100;
 constexpr unsigned long kErrorAnimationStepMs = 50;
@@ -117,7 +117,7 @@ bool tofSeesBall(DFRobot_VL6180X* sensor = nullptr, uint8_t threshold = kToFBall
 }
 
 void setSorterServo(bool engaged) {
-    const uint8_t targetAngle = engaged ? kServoTriggerAngle : kServoRestAngle;
+    const uint8_t targetAngle = engaged ? kRedBallServoAngle : kGoodBallServoAngle;
     if (targetAngle == currentServoAngle) {
         return;
     }
