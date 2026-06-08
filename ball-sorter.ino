@@ -1,4 +1,3 @@
-
 #include <Adafruit_AS7341.h>
 #include <Adafruit_NeoPixel.h>
 #include <Adafruit_TiCoServo.h>
@@ -18,18 +17,20 @@ constexpr uint8_t kEmergencyStopPin = 4;
 constexpr uint8_t kAlignBarrel = 10;
 
 // Constants
-constexpr uint8_t kDCMotorTargetVoltage = 3;  // 4 Volts over the 5 maximum
+constexpr uint8_t kDCMotorTargetVoltage = 3;
 constexpr size_t kRawChannelCount = 12;
 constexpr uint8_t kClassifierChannelIndexes[BallClassifier::kFeatureCount] = {0, 1, 2, 3, 6, 7, 8, 9, 10, 11};
 constexpr uint8_t kNeoPixelCount = 24;
 constexpr uint8_t kNeoPixelBrightness = 5;
 constexpr uint8_t kGoodBallServoAngle = 55;
-constexpr uint8_t kRedBallServoAngle = 102;
+constexpr uint8_t kRedBallServoAngle = 105;
 constexpr uint8_t kToFBallThresholdMm = 40;
 constexpr unsigned long kToFDebugIntervalMs = 100;
 constexpr unsigned long kErrorAnimationStepMs = 50;
 constexpr uint8_t kMaxBallCount = 18;
 constexpr unsigned long kMotorKickMs = 10;  // milliseconds to run full speed on start
+constexpr uint8_t kServoEngageDelayMs = 250;
+constexpr float kUnknownBallThreshold = 0.35f;
 
 bool sensorErrorState = false;
 
@@ -286,6 +287,7 @@ void loop() {
     static uint8_t ballCount = 0;
     static bool topLastBallPresent = false;
     static bool bottomLastBallPresent = false;
+    static bool colorSensorLastBallPresent = false;
     static bool ballCountWasAtMax = false;
     static bool motorWasRunning = false;
     static bool motorStarting = false;
@@ -310,6 +312,7 @@ void loop() {
 
     showDetectedColor(prediction);
 
+    const bool colorSensorBallPresent = prediction.confidence > kUnknownBallThreshold;
     const bool colorSensorSeesRedBall = labelsEqual(prediction.closestKnownColor, "red");
     uint8_t bottomTofDistance = 0;
     const bool bottomBallPresent = tofSeesBall(&bottomTofSensor, kToFBallThresholdMm, &bottomTofDistance);
@@ -322,19 +325,37 @@ void loop() {
 
     const bool ballCountJustReachedMax = ballCount == kMaxBallCount && !ballCountWasAtMax;
 
+    // Color sensor rising edge
+    static bool firstBallSeen = false;
+    static unsigned long firstBallSeenTime = 0;
+    if (colorSensorBallPresent && !colorSensorLastBallPresent) {
+        Serial.println("First ball detected by color sensor");
+        firstBallSeenTime = millis();
+        if (!firstBallSeen && colorSensorSeesRedBall) setSorterServo(true);
+        firstBallSeen = true;
+    }
+
+    // Reset firstBallSeen if no ball seen for 5 seconds
+    if (firstBallSeen && !colorSensorBallPresent && (millis() - firstBallSeenTime > 750)) {
+        firstBallSeen = false;
+        Serial.println("Resetting first ball seen state after timeout");
+    }
+
     // Bottom rising edge
     if ((bottomBallPresent && !bottomLastBallPresent) || ballCountJustReachedMax) {
         tofSensorSlotHasRedBall = colorSensorSlotHasRedBall;
         colorSensorSlotHasRedBall = colorSensorSeesRedBall;
-        setSorterServo(tofSensorSlotHasRedBall);
     }
 
     // Bottom falling edge
     if (!bottomBallPresent && bottomLastBallPresent) {
         ballCount = max(0, ballCount - 1);
         Serial.println("Ball count: " + String(ballCount));
+        delay(kServoEngageDelayMs);
+        setSorterServo(colorSensorSlotHasRedBall);
     }
 
+    // colorSensorLastBallPresent = colorSensorBallPresent;
     topLastBallPresent = topBallPresent;
     bottomLastBallPresent = bottomBallPresent;
     ballCountWasAtMax = ballCount == kMaxBallCount;
