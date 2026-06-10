@@ -21,12 +21,14 @@ constexpr uint8_t kDCMotorTargetVoltage = 3;
 constexpr size_t kRawChannelCount = 12;
 constexpr uint8_t kClassifierChannelIndexes[BallClassifier::kFeatureCount] = {0, 1, 2, 3, 6, 7, 8, 9, 10, 11};
 constexpr uint8_t kNeoPixelCount = 24;
-constexpr uint8_t kNeoPixelBrightness = 5;
+constexpr uint8_t kNeoPixelBrightness = 15;
 constexpr uint8_t kGoodBallServoAngle = 55;
 constexpr uint8_t kRedBallServoAngle = 105;
 constexpr uint8_t kToFBallThresholdMm = 40;
 constexpr unsigned long kToFDebugIntervalMs = 100;
-constexpr unsigned long kErrorAnimationStepMs = 50;
+constexpr unsigned long kErrorAnimationStepMs = 100;
+constexpr uint8_t kErrorTrailCount = 3;
+constexpr uint8_t kErrorTrailLength = 5;
 constexpr uint8_t kMaxBallCount = 18;
 constexpr unsigned long kMotorKickMs = 10;  // milliseconds to run full speed on start
 constexpr uint8_t kServoEngageDelayMs = 250;
@@ -167,12 +169,29 @@ void pixelErrorAnimation() {
     }
 
     lastUpdateTime = now;
-    const uint16_t previousPixel = currentPixel == 0 ? strip.numPixels() - 1 : currentPixel - 1;
+    for (uint16_t pixel = 0; pixel < strip.numPixels(); ++pixel) {
+        strip.setPixelColor(pixel, 0);
+    }
 
-    strip.setPixelColor(previousPixel, 0);
-    strip.setPixelColor(currentPixel, strip.Color(255, 0, 0));
+    const uint16_t pixelCount = strip.numPixels();
+    uint8_t pixelBrightness[kNeoPixelCount] = {};
+
+    for (uint8_t trailIndex = 0; trailIndex < kErrorTrailCount; ++trailIndex) {
+        const uint16_t trailHead = static_cast<uint16_t>((currentPixel + ((trailIndex * pixelCount) / kErrorTrailCount)) % pixelCount);
+        for (uint8_t trailStep = 0; trailStep < kErrorTrailLength && trailStep < pixelCount; ++trailStep) {
+            const uint16_t pixel = (trailHead + pixelCount - trailStep) % pixelCount;
+            const uint8_t brightnessStep = static_cast<uint8_t>(255 / kErrorTrailLength);
+            const uint8_t brightness = static_cast<uint8_t>(255 - (trailStep * brightnessStep));
+            pixelBrightness[pixel] = max(pixelBrightness[pixel], brightness);
+        }
+    }
+
+    for (uint16_t pixel = 0; pixel < pixelCount; ++pixel) {
+        strip.setPixelColor(pixel, strip.Color(pixelBrightness[pixel], 0, 0));
+    }
+
     strip.show();
-    currentPixel = (currentPixel + 1) % strip.numPixels();
+    currentPixel = (currentPixel + 1) % pixelCount;
 }
 
 void printDistances(uint8_t topDistance, int8_t bottomDistance) {
@@ -292,7 +311,28 @@ void loop() {
     static bool motorWasRunning = false;
     static bool motorStarting = false;
     static unsigned long motorStartTime = 0;
+    static bool ESTOPEngaged = false;
     uint8_t topTofDistance = 0;
+
+    if (digitalRead(kEmergencyStopPin) == HIGH) {
+        driveMotor(false);
+        pixelErrorAnimation();
+        ESTOPEngaged = true;
+        return;
+    }
+
+    if (ESTOPEngaged) {
+        // Build a fake ball prediction in greed at full confidence to update the LEDs
+        BallClassifier::PredictionResult fakePrediction = {};
+        fakePrediction.label = "unknown";
+        fakePrediction.closestKnownColor = "green";
+        fakePrediction.confidence = 1.0f;
+        fakePrediction.distance = 0.0f;
+        fakePrediction.isUnknown = true;
+        showDetectedColor(fakePrediction);
+        ESTOPEngaged = false;
+    }
+
     const bool topBallPresent = tofSeesBall(&topTofSensor, kToFBallThresholdMm, &topTofDistance);
     const bool shouldMotorRun = (topBallPresent && ballCount < kMaxBallCount) || digitalRead(kRotateBarrel) == HIGH;
 
@@ -352,6 +392,10 @@ void loop() {
         ballCount = max(0, ballCount - 1);
         Serial.println("Ball count: " + String(ballCount));
         delay(kServoEngageDelayMs);
+        if (tofSensorSlotHasRedBall) {
+            setSorterServo(false);
+            delay(kServoEngageDelayMs / 2);
+        }
         setSorterServo(colorSensorSlotHasRedBall);
     }
 
