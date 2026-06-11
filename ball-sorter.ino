@@ -12,7 +12,7 @@ constexpr uint8_t kNeoPixelPin = 7;
 constexpr uint8_t kTopToFSensorCEPin = 6;
 constexpr uint8_t kBottomToFSensorCEPin = 5;
 constexpr uint8_t kServoPin = 9;
-constexpr uint8_t kSpiChipSelectPin = 8;
+constexpr uint8_t kRotateBarrel2 = 8;
 constexpr uint8_t kEmergencyStopPin = 4;
 constexpr uint8_t kAlignBarrel = 10;
 
@@ -29,7 +29,6 @@ constexpr unsigned long kToFDebugIntervalMs = 100;
 constexpr unsigned long kErrorAnimationStepMs = 100;
 constexpr uint8_t kErrorTrailCount = 3;
 constexpr uint8_t kErrorTrailLength = 5;
-constexpr uint8_t kMaxBallCount = 18;
 constexpr unsigned long kMotorKickMs = 10;  // milliseconds to run full speed on start
 constexpr uint8_t kServoEngageDelayMs = 250;
 constexpr float kUnknownBallThreshold = 0.35f;
@@ -263,7 +262,7 @@ void setup() {
     pinMode(kDCMotorPin, OUTPUT);
     pinMode(kRotateBarrel, INPUT);
     pinMode(kNeoPixelPin, OUTPUT);
-    pinMode(kSpiChipSelectPin, OUTPUT);
+    pinMode(kRotateBarrel2, INPUT);
     pinMode(kEmergencyStopPin, INPUT);
     pinMode(kAlignBarrel, INPUT);
 
@@ -303,11 +302,9 @@ void setup() {
 }
 
 void loop() {
-    static uint8_t ballCount = 0;
     static bool topLastBallPresent = false;
     static bool bottomLastBallPresent = false;
     static bool colorSensorLastBallPresent = false;
-    static bool ballCountWasAtMax = false;
     static bool motorWasRunning = false;
     static bool motorStarting = false;
     static unsigned long motorStartTime = 0;
@@ -333,37 +330,24 @@ void loop() {
         ESTOPEngaged = false;
     }
 
-    const bool topBallPresent = tofSeesBall(&topTofSensor, kToFBallThresholdMm, &topTofDistance);
-    const bool shouldMotorRun = (topBallPresent && ballCount < kMaxBallCount) || digitalRead(kRotateBarrel) == HIGH;
-
-    driveMotor(shouldMotorRun);
     uint16_t features[BallClassifier::kFeatureCount];
-    unsigned long startReadingTime = millis();
     if (!readClassifierFeatures(features)) {
-        Serial.println("Error reading AS7341 channels (" + String(millis() - startReadingTime) + " ms)");
+        Serial.println("Error reading AS7341 channels");
         return;
     }
-    unsigned long endReadingTime = millis();
 
-    unsigned long startClassificationTime = micros();
     const BallClassifier::PredictionResult prediction = BallClassifier::classifyBallColorDetailed(features);
-    unsigned long endClassificationTime = micros();
     // printPrediction(prediction);
 
     showDetectedColor(prediction);
 
     const bool colorSensorBallPresent = prediction.confidence > kUnknownBallThreshold;
+    const bool topBallPresent = tofSeesBall(&topTofSensor, kToFBallThresholdMm, &topTofDistance);
+    const bool shouldMotorRun = (topBallPresent && !colorSensorBallPresent) || digitalRead(kRotateBarrel) == HIGH || digitalRead(kRotateBarrel2) == HIGH;
+    driveMotor(shouldMotorRun);
     const bool colorSensorSeesRedBall = labelsEqual(prediction.closestKnownColor, "red");
     uint8_t bottomTofDistance = 0;
     const bool bottomBallPresent = tofSeesBall(&bottomTofSensor, kToFBallThresholdMm, &bottomTofDistance);
-
-    // Top rising edge
-    if (topBallPresent && !topLastBallPresent) {
-        ballCount = min(ballCount + 1, kMaxBallCount);
-        Serial.println("Ball count: " + String(ballCount));
-    }
-
-    const bool ballCountJustReachedMax = ballCount == kMaxBallCount && !ballCountWasAtMax;
 
     // Color sensor rising edge
     static bool firstBallSeen = false;
@@ -382,15 +366,13 @@ void loop() {
     }
 
     // Bottom rising edge
-    if ((bottomBallPresent && !bottomLastBallPresent) || ballCountJustReachedMax) {
+    if (bottomBallPresent && !bottomLastBallPresent) {
         tofSensorSlotHasRedBall = colorSensorSlotHasRedBall;
         colorSensorSlotHasRedBall = colorSensorSeesRedBall;
     }
 
     // Bottom falling edge
     if (!bottomBallPresent && bottomLastBallPresent) {
-        ballCount = max(0, ballCount - 1);
-        Serial.println("Ball count: " + String(ballCount));
         delay(kServoEngageDelayMs);
         if (tofSensorSlotHasRedBall) {
             setSorterServo(false);
@@ -402,6 +384,5 @@ void loop() {
     // colorSensorLastBallPresent = colorSensorBallPresent;
     topLastBallPresent = topBallPresent;
     bottomLastBallPresent = bottomBallPresent;
-    ballCountWasAtMax = ballCount == kMaxBallCount;
     // printDistances(topTofDistance, bottomTofDistance);
 }
