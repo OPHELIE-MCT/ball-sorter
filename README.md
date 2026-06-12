@@ -14,7 +14,8 @@ The embedded centroids in `classification.cpp` are regenerated outside this repo
 
 - samples are captured with the Uno Q sketch in `M2614_LaFaceCacheeDeLaLune`
 - labeled rows are written by `M2614_LaFaceCacheeDeLaLune-Python`
-- `ball-analyzer/analysis.ipynb` prints the final C array to paste back into this repo
+- the Uno Q SBC web app can now run the centroid analysis locally, save the generated plots, and display the final C array to paste back into this repo
+- `ball-analyzer/analysis.ipynb` remains the offline reference implementation and fallback tool
 
 ## Target hardware
 

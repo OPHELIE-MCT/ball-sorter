@@ -34,6 +34,9 @@ constexpr uint8_t kServoEngageDelayMs = 250;
 constexpr float kUnknownBallThreshold = 0.35f;
 
 bool sensorErrorState = false;
+bool bottomTofAvailable = false;
+bool topTofAvailable = false;
+bool colorSensorAvailable = false;
 
 Adafruit_AS7341 as7341;
 Adafruit_NeoPixel strip(kNeoPixelCount, kNeoPixelPin, NEO_GRB + NEO_KHZ800);
@@ -106,6 +109,11 @@ bool tofSeesBall(DFRobot_VL6180X* sensor = nullptr, uint8_t threshold = kToFBall
     if (sensor == nullptr) {
         sensor = &bottomTofSensor;
     }
+
+    if ((sensor == &bottomTofSensor && !bottomTofAvailable) || (sensor == &topTofSensor && !topTofAvailable)) {
+        return false;
+    }
+
     const uint8_t range = sensor->rangePollMeasurement();
     const uint8_t status = sensor->getRangeResult();
     if (status != VL6180X_NO_ERR) {
@@ -158,7 +166,7 @@ bool readClassifierFeatures(uint16_t features[BallClassifier::kFeatureCount]) {
     return true;
 }
 
-void pixelErrorAnimation() {
+void pixelErrorAnimation(uint8_t red = 255, uint8_t green = 0, uint8_t blue = 0, uint8_t trailCount = kErrorTrailCount) {
     static uint16_t currentPixel = 0;
     static unsigned long lastUpdateTime = 0;
 
@@ -175,8 +183,12 @@ void pixelErrorAnimation() {
     const uint16_t pixelCount = strip.numPixels();
     uint8_t pixelBrightness[kNeoPixelCount] = {};
 
-    for (uint8_t trailIndex = 0; trailIndex < kErrorTrailCount; ++trailIndex) {
-        const uint16_t trailHead = static_cast<uint16_t>((currentPixel + ((trailIndex * pixelCount) / kErrorTrailCount)) % pixelCount);
+    if (trailCount == 0) {
+        trailCount = 1;
+    }
+
+    for (uint8_t trailIndex = 0; trailIndex < trailCount; ++trailIndex) {
+        const uint16_t trailHead = static_cast<uint16_t>((currentPixel + ((trailIndex * pixelCount) / trailCount)) % pixelCount);
         for (uint8_t trailStep = 0; trailStep < kErrorTrailLength && trailStep < pixelCount; ++trailStep) {
             const uint16_t pixel = (trailHead + pixelCount - trailStep) % pixelCount;
             const uint8_t brightnessStep = static_cast<uint8_t>(255 / kErrorTrailLength);
@@ -186,7 +198,13 @@ void pixelErrorAnimation() {
     }
 
     for (uint16_t pixel = 0; pixel < pixelCount; ++pixel) {
-        strip.setPixelColor(pixel, strip.Color(pixelBrightness[pixel], 0, 0));
+        const uint8_t brightness = pixelBrightness[pixel];
+        strip.setPixelColor(
+            pixel,
+            strip.Color(
+                static_cast<uint8_t>((static_cast<uint16_t>(red) * brightness) / 255),
+                static_cast<uint8_t>((static_cast<uint16_t>(green) * brightness) / 255),
+                static_cast<uint8_t>((static_cast<uint16_t>(blue) * brightness) / 255)));
     }
 
     strip.show();
@@ -273,32 +291,36 @@ void setup() {
     digitalWrite(kBottomToFSensorCEPin, HIGH);
     delay(100);
 
-    while (!(bottomTofSensor.begin())) {
+    if (!(bottomTofSensor.begin())) {
         Serial.println("Could not find bottom VL6180X");
-        pixelErrorAnimation();
+        sensorErrorState = true;
+    } else {
+        bottomTofAvailable = true;
+        bottomTofSensor.setIICAddr(0x30);
     }
-    bottomTofSensor.setIICAddr(0x30);
 
     // Turn back on the top sensor and initialize it, now that the bottom sensor has a different address
     digitalWrite(kTopToFSensorCEPin, HIGH);
     delay(100);
-    while (!(topTofSensor.begin())) {
+    if (!(topTofSensor.begin())) {
         Serial.println("Could not find top VL6180X");
-        pixelErrorAnimation();
+        sensorErrorState = true;
+    } else {
+        topTofAvailable = true;
     }
 
-    while (!as7341.begin(57, &Wire)) {
+    if (!as7341.begin(57, &Wire)) {
         Serial.println("Could not find AS7341");
-        pixelErrorAnimation();
+        sensorErrorState = true;
+    } else {
+        colorSensorAvailable = true;
+        as7341.setATIME(100);
+        as7341.setASTEP(100);
+        as7341.setGain(AS7341_GAIN_256X);
+        as7341.setLEDCurrent(5);
+        as7341.enableLED(true);
+        Serial.println("AS7341 classifier ready");
     }
-
-    as7341.setATIME(100);
-    as7341.setASTEP(100);
-    as7341.setGain(AS7341_GAIN_256X);
-    as7341.setLEDCurrent(5);
-    as7341.enableLED(true);
-
-    Serial.println("AS7341 classifier ready");
 }
 
 void loop() {
@@ -310,6 +332,7 @@ void loop() {
     static unsigned long motorStartTime = 0;
     static bool ESTOPEngaged = false;
     uint8_t topTofDistance = 0;
+    const bool manualRotateRequest = digitalRead(kRotateBarrel) == HIGH || digitalRead(kRotateBarrel2) == HIGH;
 
     if (digitalRead(kEmergencyStopPin) == HIGH) {
         driveMotor(false);
@@ -330,22 +353,32 @@ void loop() {
         ESTOPEngaged = false;
     }
 
-    uint16_t features[BallClassifier::kFeatureCount];
-    if (!readClassifierFeatures(features)) {
-        Serial.println("Error reading AS7341 channels");
-        return;
+    const bool shouldShowSensorErrorAnimation = sensorErrorState;
+
+    BallClassifier::PredictionResult prediction = {};
+    bool colorSensorBallPresent = false;
+    bool colorSensorSeesRedBall = false;
+
+    if (colorSensorAvailable) {
+        uint16_t features[BallClassifier::kFeatureCount];
+        if (!readClassifierFeatures(features)) {
+            Serial.println("Error reading AS7341 channels");
+            colorSensorAvailable = false;
+            sensorErrorState = true;
+        } else {
+            prediction = BallClassifier::classifyBallColorDetailed(features);
+            // printPrediction(prediction);
+            if (!shouldShowSensorErrorAnimation) {
+                showDetectedColor(prediction);
+            }
+            colorSensorBallPresent = prediction.confidence > kUnknownBallThreshold;
+            colorSensorSeesRedBall = labelsEqual(prediction.closestKnownColor, "red");
+        }
     }
 
-    const BallClassifier::PredictionResult prediction = BallClassifier::classifyBallColorDetailed(features);
-    // printPrediction(prediction);
-
-    showDetectedColor(prediction);
-
-    const bool colorSensorBallPresent = prediction.confidence > kUnknownBallThreshold;
     const bool topBallPresent = tofSeesBall(&topTofSensor, kToFBallThresholdMm, &topTofDistance);
-    const bool shouldMotorRun = (topBallPresent && !colorSensorBallPresent) || digitalRead(kRotateBarrel) == HIGH || digitalRead(kRotateBarrel2) == HIGH;
+    const bool shouldMotorRun = manualRotateRequest || (topBallPresent && !colorSensorBallPresent);
     driveMotor(shouldMotorRun);
-    const bool colorSensorSeesRedBall = labelsEqual(prediction.closestKnownColor, "red");
     uint8_t bottomTofDistance = 0;
     const bool bottomBallPresent = tofSeesBall(&bottomTofSensor, kToFBallThresholdMm, &bottomTofDistance);
 
@@ -385,4 +418,8 @@ void loop() {
     topLastBallPresent = topBallPresent;
     bottomLastBallPresent = bottomBallPresent;
     // printDistances(topTofDistance, bottomTofDistance);
+
+    if (shouldShowSensorErrorAnimation) {
+        pixelErrorAnimation(128, 0, 128, 1);
+    }
 }
