@@ -112,10 +112,11 @@ Le classifieur embarqué travaille sur un vecteur de `10` mesures dérivées du 
 - red
 
 Le détail de l'API de classification est documenté dans `classification.h`.
+Le bloc de paramètres générés (classes, centroïdes, rayons de confiance) est isolé dans `config.h`.
 
 Deux seuils importants coexistent :
 
-- `BallClassifier::kInnerConfidenceRadius` et `kOuterConfidenceRadii` dans `classification.h` pilotent la confiance: 100% dans le rayon interne global, puis décroissance linéaire jusqu'au rayon externe de la classe la plus proche, au-delà duquel l'échantillon devient `unknown`
+- `BallClassifier::kInnerConfidenceRadius` et `kOuterConfidenceRadii` dans `config.h` pilotent la confiance: 100% dans le rayon interne global, puis décroissance linéaire jusqu'au rayon externe de la classe la plus proche, au-delà duquel l'échantillon devient `unknown`
 - `kUnknownBallThreshold = 0.35` dans `ball-sorter.ino` sert ensuite de seuil pratique pour décider si la confiance est suffisante pour considérer qu'une balle est bien présente au niveau du capteur couleur
 
 ## Recalibrage
@@ -124,7 +125,7 @@ Les centroïdes du classifieur embarqué ne sont pas ajustés automatiquement su
 
 1. `M2614_LaFaceCacheeDeLaLune` capture les mesures AS7341 côté Uno Q
 2. `M2614_LaFaceCacheeDeLaLune-Python` étiquette les échantillons et lance l'analyse des centroïdes
-3. le bloc C++ généré est recopié dans `classification.h`
+3. le bloc C++ généré est recopié dans `config.h` (fichier dédié, pensé pour être vidé puis recollé tel quel)
 4. ce dépôt est recompilé et retéléversé sur la Seeeduino Nano
 
 Le dépôt `ball-analyzer` reste une référence utile pour l'analyse hors ligne et les vérifications supplémentaires, mais ce n'est plus le workflow nominal de l'utilisateur final.
@@ -132,7 +133,7 @@ Le dépôt `ball-analyzer` reste une référence utile pour l'analyse hors ligne
 ## Limitations connues
 
 - la qualité du tri dépend directement de la qualité du recalibrage
-- les centroïdes embarqués sont statiques tant que `classification.h` n'est pas mis à jour
+- les centroïdes embarqués sont statiques tant que `config.h` n'est pas mis à jour
 - le trieur ne publie pas ici de diagnostic haut niveau vers une interface utilisateur distante
 - si le matériel change, les temporisations mécaniques peuvent devoir être reprises
 
@@ -154,7 +155,7 @@ Le dépôt `ball-analyzer` reste une référence utile pour l'analyse hors ligne
 
 - vérifier d'abord que les couleurs détectées semblent cohérentes dans les NeoPixels
 - si les prédictions sont instables, refaire une campagne de recalibrage
-- vérifier que `classification.h` contient bien les derniers centroïdes valides
+- vérifier que `config.h` contient bien les derniers centroïdes valides
 
 ### Le téléversement échoue
 
@@ -164,7 +165,8 @@ Le dépôt `ball-analyzer` reste une référence utile pour l'analyse hors ligne
 ## Fichiers importants
 
 - `ball-sorter.ino` : sketch principal du trieur
-- `classification.h` : API publique, constantes entraînées et paramètres documentés du classifieur couleur
+- `classification.h` : API publique du classifieur couleur
+- `config.h` : constantes générées (classes, centroïdes, rayons de confiance) à remplacer lors d'un recalibrage
 - `classification.cpp` : logique de classification embarquée qui consomme ces constantes
 
 ## Documentation Doxygen
