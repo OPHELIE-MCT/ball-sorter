@@ -53,6 +53,20 @@ bool labelsEqual(const char* left, const char* right) {
     return left != nullptr && right != nullptr && strcmp(left, right) == 0;
 }
 
+int findClassIndexByLabel(const char* label) {
+    if (label == nullptr) {
+        return -1;
+    }
+
+    for (size_t classIndex = 0; classIndex < BallClassifier::kClassCount; ++classIndex) {
+        if (labelsEqual(label, BallClassifier::kClassNames[classIndex])) {
+            return static_cast<int>(classIndex);
+        }
+    }
+
+    return -1;
+}
+
 uint32_t colorForLabel(const char* label) {
     if (label == nullptr) {
         return strip.Color(0, 0, 0);
@@ -137,6 +151,8 @@ void setSorterServo(bool engaged) {
 }
 
 void printPrediction(const BallClassifier::PredictionResult& prediction) {
+    const int closestClassIndex = findClassIndexByLabel(prediction.closestKnownColor);
+
     Serial.print("pred=");
     Serial.print(prediction.label);
     Serial.print(" | closest=");
@@ -149,6 +165,14 @@ void printPrediction(const BallClassifier::PredictionResult& prediction) {
     Serial.print(prediction.secondDistance, 6);
     Serial.print(" | conf=");
     Serial.print(prediction.confidence, 4);
+    Serial.print(" | r_in=");
+    Serial.print(BallClassifier::kInnerConfidenceRadius, 6);
+    Serial.print(" | r_out_closest=");
+    if (closestClassIndex >= 0) {
+        Serial.print(BallClassifier::kOuterConfidenceRadii[closestClassIndex], 6);
+    } else {
+        Serial.print("n/a");
+    }
     Serial.print(" | unknown=");
     Serial.println(prediction.isUnknown ? "true" : "false");
 }

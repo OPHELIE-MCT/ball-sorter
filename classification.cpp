@@ -14,26 +14,6 @@ using std::endl;
 
 namespace BallClassifier {
 
-constexpr const char* kClassNames[kClassCount] = {
-    "orange",
-    "purple",
-    "blue",
-    "green",
-    "yellow",
-    "pink",
-    "red",
-};
-
-constexpr float kClassCentroids[kClassCount][kFeatureCount] = {
-    {0.02471679f, 0.05792461f, 0.09417178f, 0.13419147f, 0.21128522f, 0.33761907f, 0.31582336f, 0.17493438f, 0.81449222f, 0.12926551f},
-    {0.03330838f, 0.17555412f, 0.20551367f, 0.14268240f, 0.16079400f, 0.18252489f, 0.22742041f, 0.23741927f, 0.83719416f, 0.19315491f},
-    {0.02962298f, 0.19219952f, 0.26372702f, 0.23007654f, 0.20131277f, 0.15574808f, 0.16283440f, 0.11020639f, 0.84384747f, 0.15537278f},
-    {0.02584480f, 0.07519508f, 0.15438012f, 0.29884138f, 0.28781175f, 0.20452919f, 0.18271240f, 0.12163016f, 0.83048283f, 0.13362884f},
-    {0.02512496f, 0.06194002f, 0.11142278f, 0.20896040f, 0.25200360f, 0.27065723f, 0.26372346f, 0.16028157f, 0.83081137f, 0.13109795f},
-    {0.02632298f, 0.11293832f, 0.12699069f, 0.09264121f, 0.12411866f, 0.28161966f, 0.36198505f, 0.20892863f, 0.82092214f, 0.13577263f},
-    {0.02975261f, 0.07025229f, 0.09586762f, 0.08774140f, 0.12762836f, 0.26919229f, 0.39895494f, 0.26458829f, 0.78714126f, 0.19916887f},
-};
-
 bool normalizeVector(const float input[kFeatureCount], float output[kFeatureCount]) {
     float squared_norm = 0.0f;
     for (size_t index = 0; index < kFeatureCount; ++index) {
@@ -54,16 +34,40 @@ bool normalizeVector(const float input[kFeatureCount], float output[kFeatureCoun
     return true;
 }
 
-float computeConfidence(float distance) {
+float classOuterConfidenceRadius(int class_index) {
+    if (class_index < 0 || class_index >= static_cast<int>(kClassCount)) {
+        return 0.0f;
+    }
+
+    return kOuterConfidenceRadii[class_index];
+}
+
+float computeConfidence(float distance, int class_index) {
     if (distance < 0.0f) {
         return 0.0f;
     }
 
-    if (kUnknownThreshold <= 0.0f) {
+    const float outer_confidence_radius = classOuterConfidenceRadius(class_index);
+    if (outer_confidence_radius <= 0.0f) {
         return 0.0f;
     }
 
-    return 1.0f / (1.0f + (distance / kUnknownThreshold));
+    if (distance <= kInnerConfidenceRadius) {
+        return 1.0f;
+    }
+
+    if (distance >= outer_confidence_radius) {
+        return 0.0f;
+    }
+
+    if (outer_confidence_radius <= kInnerConfidenceRadius) {
+        return 0.0f;
+    }
+
+    const float normalized_distance =
+        (distance - kInnerConfidenceRadius) /
+        (outer_confidence_radius - kInnerConfidenceRadius);
+    return 1.0f - normalized_distance;
 }
 
 int findNearestClassIndex(const float input[kFeatureCount], float* outDistance = nullptr) {
@@ -108,7 +112,7 @@ const char* classifyBallColor(const float input[kFeatureCount]) {
 const char* classifyBallColorOrUnknown(const float input[kFeatureCount]) {
     float distance = 0.0f;
     const int class_index = findNearestClassIndex(input, &distance);
-    if (class_index < 0 || distance > kUnknownThreshold) {
+    if (class_index < 0 || distance > classOuterConfidenceRadius(class_index)) {
         return "unknown";
     }
     return kClassNames[class_index];
@@ -166,11 +170,11 @@ PredictionResult classifyBallColorDetailed(const float input[kFeatureCount]) {
         return {"unknown", "unknown", 0.0f, distance, "unknown", second_distance, true};
     }
 
-    const bool is_unknown = distance > kUnknownThreshold;
+    const bool is_unknown = distance > classOuterConfidenceRadius(best_index);
     return {
         is_unknown ? "unknown" : kClassNames[best_index],
         kClassNames[best_index],
-        computeConfidence(distance),
+        computeConfidence(distance, best_index),
         distance,
         second_index >= 0 ? kClassNames[second_index] : "unknown",
         second_distance,
