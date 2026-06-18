@@ -6,26 +6,6 @@
 namespace BallClassifier {
 
 /**
- * @brief Number of sensor features expected by the classifier.
- * @author David Goletta
- * @date 2026-03-25
- *
- * Every prediction function in this module expects a 10-dimensional input
- * vector that matches the AS7341 feature layout used during training.
- */
-constexpr size_t kFeatureCount = 10;
-
-/**
- * @brief Number of known ball colors embedded in the classifier.
- * @author David Goletta
- * @date 2026-03-25
- *
- * Every prediction function in this module expects a 10-dimensional input
- * vector that matches the AS7341 feature layout used during training.
- */
-constexpr size_t kClassCount = 7;
-
-/**
  * @brief Canonical class labels aligned with the trained centroid table.
  * @author David Goletta
  * @date 2026-06-18
@@ -48,20 +28,20 @@ constexpr const char* kClassNames[kClassCount] = {
  * Rows follow `kClassNames` and columns follow the 10-feature AS7341 layout.
  */
 constexpr float kClassCentroids[kClassCount][kFeatureCount] = {
-    {0.20083515f, 0.30414975f, 0.28179389f, 0.15131361f, 0.20083393f, 0.30414524f, 0.28179360f, 0.15132641f, 0.72484634f, 0.06561799f},
-    {0.16719841f, 0.18881229f, 0.23751035f, 0.23465544f, 0.16724038f, 0.18885139f, 0.23757185f, 0.23471157f, 0.80318034f, 0.06823966f},
-    {0.21392725f, 0.16034218f, 0.16942125f, 0.10766981f, 0.21388693f, 0.16031664f, 0.16937882f, 0.10764657f, 0.87920859f, 0.05911622f},
-    {0.28745819f, 0.20848741f, 0.18949513f, 0.11843721f, 0.28744831f, 0.20848867f, 0.18948690f, 0.11844186f, 0.80248859f, 0.06283615f},
-    {0.24089926f, 0.26075535f, 0.25102525f, 0.14293452f, 0.24091285f, 0.26078788f, 0.25105034f, 0.14294608f, 0.75955827f, 0.06396537f},
-    {0.12905555f, 0.27402219f, 0.32322213f, 0.17721341f, 0.12906940f, 0.27400238f, 0.32321057f, 0.17721187f, 0.73531367f, 0.06392914f},
-    {0.12004440f, 0.25922963f, 0.37522778f, 0.23220169f, 0.12005179f, 0.25922911f, 0.37519164f, 0.23222431f, 0.66509677f, 0.07079028f}};
+    {0.02176572f, 0.05861964f, 0.10047679f, 0.14750951f, 0.23121250f, 0.34431710f, 0.31493234f, 0.17167382f, 0.81148065f, 0.07118026f},
+    {0.02719150f, 0.19254453f, 0.22986130f, 0.15292251f, 0.17360606f, 0.20127188f, 0.24925770f, 0.23367468f, 0.83320580f, 0.06595952f},
+    {0.02427890f, 0.20775988f, 0.28599793f, 0.24360660f, 0.20450618f, 0.15539665f, 0.16185104f, 0.10542755f, 0.84196078f, 0.05410646f},
+    {0.02226513f, 0.07439216f, 0.15796030f, 0.31929674f, 0.29952163f, 0.20818717f, 0.18149197f, 0.11650031f, 0.82684755f, 0.06184162f},
+    {0.02180023f, 0.06085411f, 0.11377366f, 0.21952345f, 0.26174571f, 0.28215734f, 0.27063519f, 0.15831067f, 0.82679356f, 0.06833400f},
+    {0.02287789f, 0.12235501f, 0.13977485f, 0.09743671f, 0.13304624f, 0.29787000f, 0.36965194f, 0.20599983f, 0.81553970f, 0.06973832f},
+    {0.02466214f, 0.07120280f, 0.10178273f, 0.08696458f, 0.13598036f, 0.30313808f, 0.43909980f, 0.27928814f, 0.76763695f, 0.07702627f}};
 
 /**
  * @brief Global inner radius that maps to 100% confidence.
  * @author David Goletta
  * @date 2026-06-18
  */
-constexpr float kInnerConfidenceRadius = 0.00157743f;
+constexpr float kInnerConfidenceRadius = 0.00202114f;
 
 /**
  * @brief Class-specific outer radii where confidence falls to 0%.
@@ -70,7 +50,7 @@ constexpr float kInnerConfidenceRadius = 0.00157743f;
  *
  * Each entry shares the index of the corresponding `kClassNames` centroid.
  */
-constexpr float kOuterConfidenceRadii[kClassCount] = {0.05053299f, 0.10041068f, 0.07482672f, 0.07145156f, 0.05053299f, 0.06519904f, 0.06525675f};
+constexpr float kOuterConfidenceRadii[kClassCount] = {0.05600741f, 0.09871508f, 0.09871508f, 0.08474379f, 0.05600741f, 0.06471307f, 0.06471307f};
 
 /**
  * @brief Detailed classification output.
