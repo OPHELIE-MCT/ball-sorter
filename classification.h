@@ -37,6 +37,8 @@ struct PredictionResult {
     const char* closestKnownColor;
     float confidence;
     float distance;
+    const char* secondClosestKnownColor;
+    float secondDistance;
     bool isUnknown;
 };
 
@@ -48,7 +50,8 @@ struct PredictionResult {
  * Inputs farther than this threshold from their closest normalized class
  * centroid are rejected as `unknown`.
  */
-constexpr float kUnknownThreshold = 0.06472885f;
+constexpr float kUnknownThreshold = 5 * 0.01380343f;
+// constexpr float kUnknownThreshold = 0.06472885f;
 // constexpr float kUnknownThreshold = 0.0f;
 
 /**
@@ -113,8 +116,8 @@ const char* classifyBallColorOrUnknown(const uint16_t input[kFeatureCount]);
  *
  * @param input A 10-dimensional feature vector.
  * @return Detailed prediction data including the nearest known color,
- *         distance, confidence score, and whether the sample was rejected as
- *         `unknown`.
+ *         second-nearest known color, both distances, confidence score, and
+ *         whether the sample was rejected as `unknown`.
  */
 PredictionResult classifyBallColorDetailed(const float input[kFeatureCount]);
 
@@ -125,8 +128,8 @@ PredictionResult classifyBallColorDetailed(const float input[kFeatureCount]);
  *
  * @param input A 10-dimensional feature vector.
  * @return Detailed prediction data including the nearest known color,
- *         distance, confidence score, and whether the sample was rejected as
- *         `unknown`.
+ *         second-nearest known color, both distances, confidence score, and
+ *         whether the sample was rejected as `unknown`.
  */
 PredictionResult classifyBallColorDetailed(const uint16_t input[kFeatureCount]);
 

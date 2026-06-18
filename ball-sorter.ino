@@ -22,8 +22,8 @@ constexpr size_t kRawChannelCount = 12;
 constexpr uint8_t kClassifierChannelIndexes[BallClassifier::kFeatureCount] = {0, 1, 2, 3, 6, 7, 8, 9, 10, 11};
 constexpr uint8_t kNeoPixelCount = 24;
 constexpr uint8_t kNeoPixelBrightness = 15;
-constexpr uint8_t kGoodBallServoAngle = 55;
-constexpr uint8_t kRedBallServoAngle = 105;
+constexpr uint8_t kGoodBallServoAngle = 50;
+constexpr uint8_t kRedBallServoAngle = 100;
 constexpr uint8_t kToFBallThresholdMm = 40;
 constexpr unsigned long kToFDebugIntervalMs = 100;
 constexpr unsigned long kErrorAnimationStepMs = 100;
@@ -137,20 +137,20 @@ void setSorterServo(bool engaged) {
 }
 
 void printPrediction(const BallClassifier::PredictionResult& prediction) {
-    if (prediction.isUnknown) {
-        Serial.print(prediction.label);
-        Serial.print(" (");
-        Serial.print(prediction.closestKnownColor);
-        Serial.print(", confidence: ");
-        Serial.print(prediction.confidence, 3);
-        Serial.println(')');
-        return;
-    }
-
+    Serial.print("pred=");
     Serial.print(prediction.label);
-    Serial.print(" (confidence: ");
-    Serial.print(prediction.confidence, 3);
-    Serial.println(')');
+    Serial.print(" | closest=");
+    Serial.print(prediction.closestKnownColor);
+    Serial.print(" d1=");
+    Serial.print(prediction.distance, 6);
+    Serial.print(" | second=");
+    Serial.print(prediction.secondClosestKnownColor);
+    Serial.print(" d2=");
+    Serial.print(prediction.secondDistance, 6);
+    Serial.print(" | conf=");
+    Serial.print(prediction.confidence, 4);
+    Serial.print(" | unknown=");
+    Serial.println(prediction.isUnknown ? "true" : "false");
 }
 
 bool readClassifierFeatures(uint16_t features[BallClassifier::kFeatureCount]) {
@@ -367,7 +367,15 @@ void loop() {
             sensorErrorState = true;
         } else {
             prediction = BallClassifier::classifyBallColorDetailed(features);
-            // printPrediction(prediction);
+            printPrediction(prediction);
+            // Serial.print("raw_features=");
+            // for (size_t i = 0; i < BallClassifier::kFeatureCount; ++i) {
+            //     Serial.print(features[i]);
+            //     if (i + 1 < BallClassifier::kFeatureCount) {
+            //         Serial.print(',');
+            //     }
+            // }
+            // Serial.println();
             if (!shouldShowSensorErrorAnimation) {
                 showDetectedColor(prediction);
             }

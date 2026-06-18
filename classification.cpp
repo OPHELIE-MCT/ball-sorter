@@ -25,13 +25,13 @@ constexpr const char* kClassNames[kClassCount] = {
 };
 
 constexpr float kClassCentroids[kClassCount][kFeatureCount] = {
-    {0.02762132f, 0.05708832f, 0.09083026f, 0.12717756f, 0.18756885f, 0.32414027f, 0.30357795f, 0.18190649f, 0.81753467f, 0.19414449f},
-    {0.04038878f, 0.15962973f, 0.19003590f, 0.13858044f, 0.13784796f, 0.15709745f, 0.19301812f, 0.21909429f, 0.82386473f, 0.33147492f},
-    {0.03471983f, 0.18562622f, 0.25435946f, 0.22345415f, 0.17553088f, 0.13938649f, 0.14646511f, 0.11162463f, 0.83805086f, 0.25144541f},
-    {0.03164719f, 0.07985267f, 0.15866718f, 0.28245873f, 0.25811087f, 0.19311825f, 0.17597194f, 0.13279932f, 0.82170828f, 0.24477970f},
-    {0.02774926f, 0.06027171f, 0.10684610f, 0.20315530f, 0.23159661f, 0.25766887f, 0.24820025f, 0.16561124f, 0.83537353f, 0.18973450f},
-    {0.03159665f, 0.11569036f, 0.13216050f, 0.10013867f, 0.11856438f, 0.25289301f, 0.32484581f, 0.20953952f, 0.82651635f, 0.21805942f},
-    {0.03566784f, 0.07328996f, 0.09889431f, 0.09356423f, 0.11404587f, 0.21675596f, 0.33670340f, 0.26230335f, 0.79111326f, 0.32680237f},
+    {0.02471679f, 0.05792461f, 0.09417178f, 0.13419147f, 0.21128522f, 0.33761907f, 0.31582336f, 0.17493438f, 0.81449222f, 0.12926551f},
+    {0.03330838f, 0.17555412f, 0.20551367f, 0.14268240f, 0.16079400f, 0.18252489f, 0.22742041f, 0.23741927f, 0.83719416f, 0.19315491f},
+    {0.02962298f, 0.19219952f, 0.26372702f, 0.23007654f, 0.20131277f, 0.15574808f, 0.16283440f, 0.11020639f, 0.84384747f, 0.15537278f},
+    {0.02584480f, 0.07519508f, 0.15438012f, 0.29884138f, 0.28781175f, 0.20452919f, 0.18271240f, 0.12163016f, 0.83048283f, 0.13362884f},
+    {0.02512496f, 0.06194002f, 0.11142278f, 0.20896040f, 0.25200360f, 0.27065723f, 0.26372346f, 0.16028157f, 0.83081137f, 0.13109795f},
+    {0.02632298f, 0.11293832f, 0.12699069f, 0.09264121f, 0.12411866f, 0.28161966f, 0.36198505f, 0.20892863f, 0.82092214f, 0.13577263f},
+    {0.02975261f, 0.07025229f, 0.09586762f, 0.08774140f, 0.12762836f, 0.26919229f, 0.39895494f, 0.26458829f, 0.78714126f, 0.19916887f},
 };
 
 bool normalizeVector(const float input[kFeatureCount], float output[kFeatureCount]) {
@@ -131,18 +131,49 @@ const char* classifyBallColorOrUnknown(const uint16_t input[kFeatureCount]) {
 }
 
 PredictionResult classifyBallColorDetailed(const float input[kFeatureCount]) {
-    float distance = 0.0f;
-    const int class_index = findNearestClassIndex(input, &distance);
-    if (class_index < 0) {
-        return {"unknown", "unknown", 0.0f, distance, true};
+    float normalized[kFeatureCount];
+    if (!normalizeVector(input, normalized)) {
+        return {"unknown", "unknown", 0.0f, INFINITY, "unknown", INFINITY, true};
+    }
+
+    int best_index = -1;
+    int second_index = -1;
+    float best_distance_sq = INFINITY;
+    float second_distance_sq = INFINITY;
+
+    for (size_t class_index = 0; class_index < kClassCount; ++class_index) {
+        float distance_sq = 0.0f;
+        for (size_t feature_index = 0; feature_index < kFeatureCount; ++feature_index) {
+            const float delta = normalized[feature_index] - kClassCentroids[class_index][feature_index];
+            distance_sq += delta * delta;
+        }
+
+        if (distance_sq < best_distance_sq) {
+            second_distance_sq = best_distance_sq;
+            second_index = best_index;
+            best_distance_sq = distance_sq;
+            best_index = static_cast<int>(class_index);
+        } else if (distance_sq < second_distance_sq) {
+            second_distance_sq = distance_sq;
+            second_index = static_cast<int>(class_index);
+        }
+    }
+
+    const float distance = sqrtf(best_distance_sq);
+    const float second_distance = sqrtf(second_distance_sq);
+
+    if (best_index < 0) {
+        return {"unknown", "unknown", 0.0f, distance, "unknown", second_distance, true};
     }
 
     const bool is_unknown = distance > kUnknownThreshold;
     return {
-        is_unknown ? "unknown" : kClassNames[class_index],
-        kClassNames[class_index],
+        is_unknown ? "unknown" : kClassNames[best_index],
+        kClassNames[best_index],
         computeConfidence(distance),
         distance,
+        second_index >= 0 ? kClassNames[second_index] : "unknown",
+        second_distance,
         is_unknown,
     };
 }
