@@ -31,7 +31,7 @@ constexpr uint8_t kErrorTrailCount = 3;
 constexpr uint8_t kErrorTrailLength = 5;
 constexpr unsigned long kMotorKickMs = 10;  // milliseconds to run full speed on start
 constexpr uint8_t kServoEngageDelayMs = 250;
-constexpr float kUnknownBallThreshold = 0.35f;  // TODO: Tweak this since the new algorithm now uses radius-based confidence instead of distance-based
+constexpr float kUnknownBallThreshold = 0.10f;  // TODO: Tweak this since the new algorithm now uses radius-based confidence instead of distance-based
 constexpr uint8_t kColorSensorLedBrightness = 5;
 constexpr as7341_gain_t kColorSensorGain = AS7341_GAIN_256X;
 // constexpr as7341_gain_t kColorSensorGain = AS7341_GAIN_128X;
@@ -442,8 +442,8 @@ void loop() {
     // Bottom falling edge
     if (!bottomBallPresent && bottomLastBallPresent) {
         delay(kServoEngageDelayMs);
-        if (tofSensorSlotHasRedBall) {
-            setSorterServo(false);
+        if (!tofSensorSlotHasRedBall) {
+            setSorterServo(true);
             delay(kServoEngageDelayMs / 2);
         }
         setSorterServo(colorSensorSlotHasRedBall);
